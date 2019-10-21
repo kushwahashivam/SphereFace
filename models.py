@@ -1,12 +1,20 @@
+import math
 import torch
 import torch.nn as nn
 
 
-class ASoftmax(nn.Module):
-    def __init__(self, m=4):
+class AngularSoftmax(nn.Module):
+    def __init__(self, feature_dim, num_classes, m=4):
         super().__init__()
-    
+        self.m = m
+        std = math.sqrt(2./float(feature_dim+num_classes))
+        self.W = torch.empty(feature_dim, num_classes).normal_(mean=0., std=std).requires_grad_(True)
     def forward(self, x, w):
+        with torch.no_grad():
+            self.W.div_(self.W.norm(p=2, dim=1, keepdim=True))
+        xw = x @ self.W
+    
+    def cos_m_theta(self, x):
         pass
 
 
@@ -92,6 +100,5 @@ class ResNet50(nn.Module):
         x = x.view(x.size(0), 1024)
         x = self.fc(x)
         if self.training:
-            with torch.no_grad():
-                self.out.weight.div_(self.out.weight.norm(p=2, dim=1, keepdim=True))
+            pass
         return x
