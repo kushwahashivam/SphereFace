@@ -6,16 +6,49 @@ import torch.nn as nn
 class AngularSoftmax(nn.Module):
     def __init__(self, feature_dim, num_classes, m=4):
         super().__init__()
+        self.feature_dim = feature_dim
+        self.num_classes = num_classes
         self.m = m
+        self.k = m-1
         std = math.sqrt(2./float(feature_dim+num_classes))
-        self.W = torch.empty(feature_dim, num_classes).normal_(mean=0., std=std).requires_grad_(True)
-    def forward(self, x, w):
+        self.W = torch.empty(self.feature_dim, self.num_classes).normal_(mean=0., std=std).requires_grad_(True)
+        self.W = nn.Parameter(self.W, requires_grad=True)
+        
+    def forward(self, x):
         with torch.no_grad():
             self.W.div_(self.W.norm(p=2, dim=1, keepdim=True))
+        mod_x = x.norm(p=2, dim=1, keepdim=True)
         xw = x @ self.W
+        cos_theta = xw/(mod_x + 1e-6)
+        x_cos_theta = mod_x * cos_theta
+        cosmtheta = self.cos_m_theta(cos_theta)
+        x_psi = mod_x * self.psi(cosmtheta)
+        e_x_cos_theta = torch.exp(x_cos_theta)
+        e_x_psi = torch.exp(x_psi)
+        out = []
+        for i in range(self.num_classes):
+            out.append(
+                e_x_psi[:, i:i+1]/(e_x_psi[:, i:i+1] + \
+                torch.sum(e_x_cos_theta[:, :i], dim=1, keepdim=True) + \
+                torch.sum(e_x_cos_theta[:, i+1:], dim=1, keepdim=True))
+            )
+        out = torch.cat(out, dim=1)
+        return torch.log(out)
     
-    def cos_m_theta(self, x):
-        pass
+    def cos_m_theta(self, cos_theta):
+        if self.m == 1:
+            return cos_theta
+        elif self.m == 2:
+            return 2*(cos_theta**2) - 1
+        elif self.m == 3:
+            return 4*(cos_theta**3) - 3*(cos_theta)
+        elif self.m == 4:
+            return 8*(cos_theta**4) - 8*(cos_theta**2) + 1
+        else:
+            raise ValueError("cos(m*theta) only defined for m in [1, 4]")
+        
+    def psi(self, cosmtheta):
+        return ((-1)**self.k) * cosmtheta - 2*self.k
 
 
 class ResidualModule(nn.Module):
